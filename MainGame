@@ -1,0 +1,257 @@
+import pygame
+import time
+import random
+
+# Initialize the game
+pygame.init()
+
+# Define colors
+white = (255, 255, 255)
+yellow = (255, 255, 102)
+black = (0, 0, 0)
+red = (213, 50, 80)
+green = (0, 255, 0)
+blue = (50, 153, 213)
+
+# Display dimensions
+dis_width = 1680
+dis_height = 950
+
+# Create the display
+dis = pygame.display.set_mode((dis_width, dis_height))
+pygame.display.set_caption('Snake Game with Upgrades')
+# Set the clock speed
+clock = pygame.time.Clock()
+snake_block = 20
+initial_speed = 15
+snake_speed = initial_speed
+
+# Define font styles
+font_style = pygame.font.SysFont("bahnschrift", 25)
+score_font = pygame.font.SysFont("comicsansms", 35)
+
+# Money and upgrade variables
+money = 0
+speed_upgrade_cost = 100
+length_upgrade_cost = 150
+shield_upgrade_cost = 300
+money_per_food = 10
+points = 0
+upgrade_interval = random.randint(5, 15)  # Random interval between 5 and 15 points
+death_count = 0
+shield_active = False
+shield_timer = 0
+
+# Function to display the current score, money, and death count
+def Your_score(score, money, deaths):
+    value = score_font.render(f"Score: {score} | Money: ${money}", True, white)
+    dis.blit(value, [0, 0])
+    death_value = score_font.render(f"Deaths: {deaths}", True, white)
+    dis.blit(death_value, [dis_width - 200, 0])  # Adjusted position
+
+# Function to draw the snake
+def our_snake(snake_block, snake_list):
+    for x in snake_list:
+        pygame.draw.rect(dis, green, [x[0], x[1], snake_block, snake_block])
+
+# Function to display messages on the screen
+def message(msg, color, x_offset=0):
+    mesg = font_style.render(msg, True, color)
+    dis.blit(mesg, [dis_width / 6 + x_offset, dis_height / 3])
+
+# Function to display the upgrade menu
+def upgrade_menu():
+    global money, snake_speed, speed_upgrade_cost, length_upgrade_cost, shield_upgrade_cost, shield_active, shield_timer
+    
+    # Check if the player can afford any upgrades
+    if money < min(speed_upgrade_cost, length_upgrade_cost, shield_upgrade_cost):
+        dis.fill(black)
+        broke_message = font_style.render("You're too broke to buy upgrades", True, red)
+        dis.blit(broke_message, [dis_width / 6, dis_height / 3])
+        pygame.display.update()
+        pygame.time.wait(2000)  # Wait for 2 seconds before returning
+        return
+
+    dis.fill(black)
+    
+    # Define vertical spacing for menu items
+    start_y = dis_height / 4
+    line_height = 40  # Space between lines
+    
+    # Display title
+    title = font_style.render(f"Upgrade Options:", True, yellow)
+    dis.blit(title, [dis_width / 6, start_y])
+    
+    # Display money
+    money_text = font_style.render(f"Money: ${money}", True, white)
+    dis.blit(money_text, [dis_width / 6, start_y + line_height])
+    
+    # Display upgrade options
+    y_offset = start_y + 2 * line_height
+    if money >= speed_upgrade_cost:
+        speed_upgrade_text = font_style.render(f"1. Speed (+2): Cost ${speed_upgrade_cost}", True, white)
+        dis.blit(speed_upgrade_text, [dis_width / 6, y_offset])
+        y_offset += line_height
+    
+    if money >= length_upgrade_cost:
+        length_upgrade_text = font_style.render(f"2. Length (+5 blocks): Cost ${length_upgrade_cost}", True, white)
+        dis.blit(length_upgrade_text, [dis_width / 6, y_offset])
+        y_offset += line_height
+    
+    if money >= shield_upgrade_cost:
+        shield_upgrade_text = font_style.render(f"3. Shield (5 seconds): Cost ${shield_upgrade_cost}", True, white)
+        dis.blit(shield_upgrade_text, [dis_width / 6, y_offset])
+        y_offset += line_height
+
+    # Display exit option
+    exit_text = font_style.render("Press 1 to Upgrade Speed, 2 to Increase Length, 3 to Activate Shield, or Q to Quit", True, white)
+    dis.blit(exit_text, [dis_width / 6, y_offset + line_height])
+    
+    pygame.display.update()
+
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_1 and money >= speed_upgrade_cost:
+                    money -= speed_upgrade_cost
+                    snake_speed += 2
+                    speed_upgrade_cost += 50  # Increase cost for next upgrade
+                    return
+                elif event.key == pygame.K_2 and money >= length_upgrade_cost:
+                    money -= length_upgrade_cost
+                    global Length_of_snake
+                    Length_of_snake += 5
+                    length_upgrade_cost += 75  # Increase cost for next upgrade
+                    return
+                elif event.key == pygame.K_3 and money >= shield_upgrade_cost:
+                    money -= shield_upgrade_cost
+                    shield_active = True
+                    shield_timer = pygame.time.get_ticks()  # Start the shield timer
+                    shield_upgrade_cost += 100  # Increase cost for next shield upgrade
+                    return
+                elif event.key == pygame.K_q:
+                    return
+
+
+# Function to place food randomly on the screen
+def random_food():
+    return (round(random.randrange(0, dis_width - snake_block) / snake_block) * snake_block,
+            round(random.randrange(0, dis_height - snake_block) / snake_block) * snake_block)
+
+# Function to check collision between the snake and the food
+def collision(x1, y1, foodx, foody, block_size):
+    return (x1 < foodx + block_size and x1 + block_size > foodx) and (y1 < foody + block_size and y1 + block_size > foody)
+
+# The main game loop
+def gameLoop():
+    global money, snake_speed, points, upgrade_interval, death_count, shield_active, shield_timer
+
+    game_over = False
+    game_close = False
+
+    x1 = dis_width / 2
+    y1 = dis_height / 2
+
+    x1_change = 0
+    y1_change = 0
+
+    current_direction = None  # To keep track of the current direction
+
+    snake_List = []
+    global Length_of_snake
+    Length_of_snake = 1
+
+    foodx, foody = random_food()
+
+    while not game_over:
+
+        while game_close:
+            dis.fill(black)
+            message("You Lost! Press Q-Quit or C-Play Again", red)
+            Your_score(Length_of_snake - 1, money, death_count)
+            pygame.display.update()
+
+            for event in pygame.event.get():
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_q:
+                        game_over = True
+                        game_close = False
+                    if event.key == pygame.K_c:
+                        gameLoop()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                game_over = True
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_LEFT and current_direction != 'RIGHT':
+                    x1_change = -snake_block
+                    y1_change = 0
+                    current_direction = 'LEFT'
+                elif event.key == pygame.K_RIGHT and current_direction != 'LEFT':
+                    x1_change = snake_block
+                    y1_change = 0
+                    current_direction = 'RIGHT'
+                elif event.key == pygame.K_UP and current_direction != 'DOWN':
+                    y1_change = -snake_block
+                    x1_change = 0
+                    current_direction = 'UP'
+                elif event.key == pygame.K_DOWN and current_direction != 'UP':
+                    y1_change = snake_block
+                    x1_change = 0
+                    current_direction = 'DOWN'
+                elif event.key == pygame.K_q:
+                    foodx, foody = random_food()  # Move food to a random position
+
+        x1 += x1_change
+        y1 += y1_change
+
+        # Check if snake hits the edge of the screen
+        if x1 >= dis_width or x1 < 0 or y1 >= dis_height or y1 < 0:
+            if not shield_active:
+                game_close = True
+                death_count += 1  # Increment death count
+
+        dis.fill(blue)
+        pygame.draw.rect(dis, red, [foodx, foody, snake_block, snake_block])
+        snake_Head = [x1, y1]
+        snake_List.append(snake_Head)
+
+        if len(snake_List) > Length_of_snake:
+            del snake_List[0]
+
+        for x in snake_List[:-1]:
+            if x == snake_Head:
+                if not shield_active:
+                    game_close = True
+                    death_count += 1  # Increment death count
+
+        our_snake(snake_block, snake_List)
+        Your_score(Length_of_snake - 1, money, death_count)
+
+        # Check if shield is active and update its timer
+        if shield_active:
+            current_time = pygame.time.get_ticks()
+            if current_time - shield_timer > 5000:  # Shield lasts for 5 seconds
+                shield_active = False
+
+        pygame.display.update()
+
+        if collision(x1, y1, foodx, foody, snake_block):
+            foodx, foody = random_food()  # Move food to a new random position
+            Length_of_snake += 1
+            money += money_per_food
+            points += 1
+
+            # Check if it's time to show the upgrade screen
+            if points >= upgrade_interval:
+                upgrade_menu()
+                points = 0  # Reset points after showing upgrade menu
+                upgrade_interval = random.randint(5, 15)  # Set new random interval
+
+        clock.tick(snake_speed)
+
+    pygame.quit()
+    quit()
+
+# Start the game
+gameLoop()
